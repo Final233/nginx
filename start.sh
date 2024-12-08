@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 
-if [ -z $@ ]; then
-    version='1.20.0'
-else
-    version="$@"
-fi
-# APPDIR="/apps/nginx-$version"
-# APPDIR="/usr/local/nginx-$version"
+# 设置版本号，如果用户提供了参数，则使用用户提供的版本号
+version=${1:-'1.20.0'}
+
+# 定义 APPDIR 和 PKGNAME
 APPDIR="nginx-$version"
 PKGNAME="nginx-$version"
+
+# 获取 CPU 核心数
 CPU_NUM=$(lscpu | awk -F: '/socket/{print $2}')
+
+# 定义编译选项
 MAKE_OPT="./configure --prefix=${APPDIR} \
 --with-http_ssl_module \
 --with-http_v2_module \
@@ -21,19 +22,42 @@ MAKE_OPT="./configure --prefix=${APPDIR} \
 --with-stream_ssl_module \
 --with-stream_realip_module"
 
-_nginx_make_install() {
-    wget -c http://nginx.org/download/${PKGNAME}.tar.gz
-    apt install bison bison-devel zlib-devel libcurl-devel libarchive-devel boost-devel gcc gcc-c++ cmake ncurses-devel gnutls-devel libxml2-devel openssl-devel libevent-devel libaio-devel -y
-    apt install -y vim lrzsz tree screen psmisc lsof tcpdump wget ntpdategcc gcc-c++ glibc glibc-devel pcre pcre-devel openssl openssl-devel systemd-develnet-tools iotop bc zip unzip zlib-devel bash-completion nfs-utils automake libxml2libxml2-devel libxslt libxslt-devel perl perl-ExtUtils-Embed
-    # getent passwd nginx | awk -F: '{print $3}' | grep 6000 -q || (userdel nginx && useradd -s /sbin/nologin -u 6000)
-    tar xf ${PKGNAME}.tar.gz
-    cd ${PKGNAME} && ${MAKE_OPT} && make -j${CPU_NUM} && make install && tar Jcvf ${PKGNAME}.tar.xz $APPDIR
+# 安装依赖
+_install_dependencies() {
+    echo "安装依赖..."
+    apt update
+    apt install -y bison bison-dev zlib-dev libcurl-dev libarchive-dev boost-dev gcc gcc-c++ cmake ncurses-dev gnutls-dev libxml2-dev openssl-dev libevent-dev libaio-dev
+    apt install -y vim lrzsz tree screen psmisc lsof tcpdump wget ntpdate gcc gcc-c++ glibc glibc-dev pcre pcre-dev openssl openssl-dev systemd-dev net-tools iotop bc zip unzip zlib-dev bash-completion nfs-utils automake libxml2 libxml2-dev libxslt libxslt-dev perl perl-ExtUtils-Embed
 }
 
-_nginx_make_install "$@"
+# 编译和安装 Nginx
+_compile_and_install_nginx() {
+    echo "编译和安装 Nginx..."
+    wget -c "http://nginx.org/download/${PKGNAME}.tar.gz" || { echo "下载失败"; exit 1; }
+    tar xf ${PKGNAME}.tar.gz
+    cd ${PKGNAME} && eval "${MAKE_OPT}" && make -j${CPU_NUM} && make install && tar Jcvf ${PKGNAME}.tar.xz $APPDIR
+}
 
-gh release delete ${PKGNAME} -y
+# 删除旧的发布版本
+_delete_old_release() {
+    echo "删除旧的发布版本..."
+    gh release delete ${PKGNAME} -y || { echo "删除旧发布版本失败"; exit 1; }
+}
 
-# gh release create ${PKGNAME} ./*.tar.xz --title "${PKGNAME} (beta)" --notes "this is a nginx beta release" --prerelease
-# gh release create ${PKGNAME} ./*.tar.xz --title "${PKGNAME}" --notes "this is a make nginx release" --prerelease
-gh release create ${PKGNAME} ./*.tar.xz --title "${PKGNAME}" --notes "this is a make nginx release"
+# 创建新的发布版本
+_create_new_release() {
+    echo "创建新的发布版本..."
+    gh release create ${PKGNAME} ./*.tar.xz --title "${PKGNAME}" --notes "this is a make nginx release" || { echo "创建新发布版本失败"; exit 1; }
+}
+
+# 主函数
+_main() {
+    _install_dependencies
+    _compile_and_install_nginx
+    _delete_old_release
+    _create_new_release
+    echo "Nginx ${version} 安装完成。"
+}
+
+# 执行主函数
+_main "$@"
